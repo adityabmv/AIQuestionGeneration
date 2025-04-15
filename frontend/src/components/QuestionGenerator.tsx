@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { generateStructuredQuestion } from "../api/api";
+//import { generateStructuredQuestion } from "../api/api";
 
 interface QuestionGeneratorProps {
     segments: string[];
