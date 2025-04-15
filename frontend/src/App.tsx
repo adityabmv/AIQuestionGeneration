@@ -8,6 +8,8 @@ const App: React.FC = () => {
     const [files, setFiles] = useState<string[]>([]);
     const [selectedFile, setSelectedFile] = useState<string>("");
 
+    console.log(files)
+    
     const refreshFiles = async () => {
         const fileList = await fetchFiles();
         setFiles(fileList);
