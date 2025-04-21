@@ -8,7 +8,6 @@ from datetime import datetime
 import yt_dlp
 from transformers import pipeline
 import whisper
-import spacy
 #from backend 
 import model 
 import torch
@@ -22,8 +21,6 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 
 load_dotenv()
 
-# Load spaCy tokenizer
-nlp = spacy.load("en_core_web_sm")
 
 # Configure API key from environment variables
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
@@ -186,7 +183,7 @@ def load_text_file(lines):
           sentences.append(text)
           timestamps.append((start_time, end_time))
 
-    tokens = [token.text for sent in sentences for token in nlp(sent)]
+    tokens = [word for sent in sentences for word in sent.split()]
     return sentences, tokens, timestamps
 
 
