@@ -36,12 +36,6 @@ export const generateTranscript = async (filename: string): Promise<{ transcript
     return response.json();
 };
 
-/*export const generateStructuredQuestion = async (questionType: string, prompt: string) => {
-    const response = await fetch("http://127.0.0.1:5000/generate-structured", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questionType, prompt, params: {} }),
-    });*/
 
 export const generateStructuredQuestion = async (questionType: string, segment: string) => {
     try {
