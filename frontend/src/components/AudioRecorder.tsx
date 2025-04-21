@@ -1,5 +1,7 @@
 import { useState, useRef } from "react";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 interface AudioRecorderProps {
     refreshFiles: () => void;
 }
@@ -51,7 +53,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ refreshFiles }) => {
         const formData = new FormData();
         formData.append("audio_file", audioBlob, filename);
 
-        fetch("http://127.0.0.1:5000/upload-audio", {
+        fetch(`${API_URL}/upload-audio`, {
             method: "POST",
             body: formData,
         })
@@ -77,7 +79,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ refreshFiles }) => {
         }
         setExtraction(true);
         try {
-            const response = await fetch("http://127.0.0.1:5000/download-youtube-audio", {
+            const response = await fetch(`${API_URL}/download-youtube-audio`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ youtube_url: youtubeUrl }),
