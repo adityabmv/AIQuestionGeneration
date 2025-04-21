@@ -2,6 +2,8 @@ import { useState, useRef } from "react";
 import { generateTranscript } from "../api/api";
 import QuestionGenerator from "./QuestionGenerator";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 interface TranscriptGeneratorProps {
     selectedFile: string;
 }
@@ -55,7 +57,7 @@ const TranscriptGenerator: React.FC<TranscriptGeneratorProps> = ({ selectedFile 
             return;
         }
         stopAudio();
-        const audioUrl = `http://127.0.0.1:5000/static/uploads/${selectedFile}`;
+        const audioUrl = `${API_URL}/static/uploads/${selectedFile}`;
         const newAudio = new Audio(audioUrl);
         newAudio.play();
         audioRef.current = newAudio;
