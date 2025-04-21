@@ -1,6 +1,8 @@
 import { useState } from "react";
 //import { generateStructuredQuestion } from "../api/api";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 interface QuestionGeneratorProps {
     segments: string[];
 }
@@ -13,50 +15,6 @@ const QuestionGenerator: React.FC<QuestionGeneratorProps> = ({ segments }) => {
     const [loading, setLoading] = useState<boolean>(false);
 
     
-
-    /*const generateQuestions = async () => {
-        if (!selectedSegment || numQuestions < 1) {
-            alert("Please select a valid segment and number of questions.");
-            return;
-        }
-    
-        setLoading(true);
-        setResponses([]); // Clear existing responses
-    
-        // Prepare an array of prompts for multiple questions
-        const prompts = Array.from({ length: numQuestions }, (_, i) => {
-            return `${selectedSegment} - Generate question ${i + 1} of type ${questionType}`;
-        });
-    
-        try {
-            const response = await fetch('http://127.0.0.1:5000/generate-structured', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    prompts, // Send the array of prompts
-                    questionType, // Send the question type
-                    params: {} // Send any other parameters you need
-                })
-            });
-    
-            const data = await response.json();
-    
-            if (data.responses) {
-                setResponses(data.responses); // Set the responses from the API
-            } else {
-                console.log(data)
-                alert('Error generating questions.');
-            }
-        } catch (error) {
-            console.error('Error generating questions:', error);
-            alert("Error generating questions.");
-        } finally {
-            setLoading(false);
-        }
-    };*/
-
     const generateQuestions = async () => {
         if (!selectedSegment || numQuestions < 1) {
             alert("Please select a valid segment and number of questions.");
@@ -67,7 +25,7 @@ const QuestionGenerator: React.FC<QuestionGeneratorProps> = ({ segments }) => {
         setResponses([]);
     
         try {
-            const response = await fetch('http://127.0.0.1:5000/generate-structured-bulk', {
+            const response = await fetch(`${API_URL}/generate-structured-bulk`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
