@@ -10,7 +10,7 @@ services:
     volumes:
       - ./backend/static/uploads:/app/static/uploads  # bind mount for local dev
     environment:
-      - GOOGLE_API_KEY=AIzaSyBVn5jAG_O-etaXzS6gpth8L3_S9tSUv7s
+      - GOOGLE_API_KEY=AIzaSyBVn5jAG_O-etaXzS6gpth8L3_S9tSUsDv7s
       - VITE_API_URL=http://127.0.0.1:5001
     env_file:
       - .env
