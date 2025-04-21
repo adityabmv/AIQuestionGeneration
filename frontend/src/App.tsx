@@ -4,10 +4,13 @@ import FileList from "./components/FileList";
 import TranscriptGenerator from "./components/TranscriptGenerator";
 import { fetchFiles } from "./api/api";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const App: React.FC = () => {
     const [files, setFiles] = useState<string[]>([]);
     const [selectedFile, setSelectedFile] = useState<string>("");
     console.log(files)
+    console.log(API_URL)
     const refreshFiles = async () => {
         const fileList = await fetchFiles();
         setFiles(fileList);
