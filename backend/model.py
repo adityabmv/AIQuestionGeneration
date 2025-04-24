@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import spacy
 import numpy as np
 import random
 from scipy.signal import find_peaks

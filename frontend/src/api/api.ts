@@ -1,4 +1,5 @@
-const API_URL = "http://127.0.0.1:5000";
+const API_URL = import.meta.env.VITE_API_URL;
+
 
 export const uploadAudio = async (audioBlob: Blob, filename: string): Promise<{ message?: string; error?: string }> => {
     const formData = new FormData();
@@ -35,12 +36,6 @@ export const generateTranscript = async (filename: string): Promise<{ transcript
     return response.json();
 };
 
-/*export const generateStructuredQuestion = async (questionType: string, prompt: string) => {
-    const response = await fetch("http://127.0.0.1:5000/generate-structured", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questionType, prompt, params: {} }),
-    });*/
 
 export const generateStructuredQuestion = async (questionType: string, segment: string) => {
     try {

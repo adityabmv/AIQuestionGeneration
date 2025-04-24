@@ -8,7 +8,7 @@ from datetime import datetime
 import yt_dlp
 from transformers import pipeline
 import whisper
-import spacy
+#from backend 
 import model 
 import torch
 import subprocess
@@ -21,8 +21,6 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 
 load_dotenv()
 
-# Load spaCy tokenizer
-nlp = spacy.load("en_core_web_sm")
 
 # Configure API key from environment variables
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
@@ -50,21 +48,107 @@ def generate_text(model, prompt, params):
 
 def generate_structured_text(model, prompt, params, structure):
     try:
+        question_type = structure.get('questionType', '')
+        
+        # Enhanced prompt with specific formatting instructions
+        # Prepare type-specific rules
+        otl_rules = '''
+        For OTL (Ordering) questions:
+        - List items should be in RANDOM order in the question
+        - Solution should show the correct order
+        - Each step should be clear and distinct
+        - Include clear sequence indicators''' if question_type == 'OTL' else ''
+        
+        mtl_rules = '''
+        For MTL (Matching) questions:
+        - Ensure pairs are logically related
+        - Both lists should have equal number of items
+        - Make relationships clear but not obvious''' if question_type == 'MTL' else ''
+        
+        sml_rules = '''
+        For SML (Multiple Select) questions:
+        - Include MULTIPLE correct answers (at least 2)
+        - Clearly indicate all correct options in solution
+        - Each option should be distinct''' if question_type == 'SML' else ''
+        
+        sol_rules = '''
+        For SOL (Single Option) questions:
+        - Only one correct answer
+        - All options should be plausible
+        - Clear explanation for correct/incorrect''' if question_type == 'SOL' else ''
+        
         structured_prompt = f"""
-        {prompt}
+        Based on this content: {prompt}
 
-        Please provide your response in the following JSON format. Ensure the response is valid JSON. Do not include any text outside of the JSON structure. Do not include any markdown code blocks.
+        Generate a question following these STRICT formatting rules:
+        1. Replace all placeholder IDs with unique alphanumeric identifiers (e.g., 'opt1', 'opt2', etc.)
+        2. Replace 'Rich Text/Markdown' with actual question text
+        3. Replace 'Text Value' with meaningful answer options
+        4. Ensure all explanations are detailed and helpful
+        5. Set appropriate difficulty level (1-5)
+        6. Generate realistic parameter values if isParameterized is True
+
+        Additional rules based on question type:
+        {otl_rules}
+        {mtl_rules}
+        {sml_rules}
+        {sol_rules}
+
+        The response MUST follow this EXACT JSON structure (replace all placeholders):
         {json.dumps(structure, indent=2)}
+
+        Important:
+        - Generate ONLY valid JSON
+        - NO text outside JSON structure
+        - NO markdown code blocks
+        - ALL IDs must be unique
+        - ALL placeholder values must be replaced
         """
 
         response = model.generate_content(structured_prompt, generation_config=genai.GenerationConfig(**params))
         response_text = response.text
 
         try:
+            # Clean and parse the response
             start_index = response_text.find('{')
             end_index = response_text.rfind('}') + 1
             cleaned_response = response_text[start_index:end_index]
-            return json.loads(cleaned_response)
+            parsed_response = json.loads(cleaned_response)
+            
+            # Validate the response has no placeholder values
+            if any(placeholder in str(parsed_response) for placeholder in [
+                "ID of the LOT", "ID of the LOT item", "Text Value", 
+                "Rich Text/Markdown", "ID of item in lot"
+            ]):
+                return {"error": "Response contains placeholder values that were not replaced"}
+            
+            # Additional validation based on question type
+            question_type = parsed_response.get('questionType', '')
+            
+            if question_type == 'SML':
+                # Ensure multiple correct answers for SML
+                solution = parsed_response.get('solution', {}).get('SML', {})
+                if solution and len(solution.get('itemIds', [])) < 2:
+                    return {"error": "SML questions must have at least 2 correct answers"}
+                    
+            elif question_type == 'OTL':
+                # Ensure options are in different order than solution
+                lot_items = parsed_response.get('lot', {}).get('lotItems', [])
+                solution_orders = parsed_response.get('solution', {}).get('OTL', {}).get('orders', [])
+                
+                if lot_items and solution_orders:
+                    question_order = [item['id'] for item in lot_items]
+                    solution_order = sorted(solution_orders, key=lambda x: x['order'])
+                    solution_order = [item['itemId'] for item in solution_order]
+                    
+                    if question_order == solution_order:
+                        # Randomly shuffle the lot items
+                        import random
+                        random.shuffle(lot_items)
+                        parsed_response['lot']['lotItems'] = lot_items
+                
+            return parsed_response
+            
         except (ValueError, json.JSONDecodeError, IndexError) as e:
             return {"error": "LLM response was not valid JSON.", "raw_response": response_text, "parsing_error": str(e)}
 
@@ -99,7 +183,7 @@ def load_text_file(lines):
           sentences.append(text)
           timestamps.append((start_time, end_time))
 
-    tokens = [token.text for sent in sentences for token in nlp(sent)]
+    tokens = [word for sent in sentences for word in sent.split()]
     return sentences, tokens, timestamps
 
 
@@ -111,6 +195,10 @@ def upload_audio():
         audio_file.save(os.path.join(UPLOAD_FOLDER, audio_file.filename))
         return jsonify({"message": "Audio uploaded successfully!"}), 200
     return jsonify({"error": "No audio file provided."}), 400
+
+@app.route("/", methods=["GET"])
+def index():
+    return jsonify({"message": "Welcome to the Gemini API!"})
 
 @app.route("/download-youtube-audio", methods=["POST"])
 def download_youtube_audio():
@@ -171,6 +259,7 @@ def generate_transcript():
         result = whisper_model.transcribe(filename, word_timestamps=False)
         segments = result['segments']
 
+
         # Initialize an empty string to accumulate the text
         text_output = ""
 
@@ -181,6 +270,7 @@ def generate_transcript():
             text = seg['text'].strip()
             text_output += f"{start_time:.2f} --> {end_time:.2f}\n{text}\n\n"
         text_output = text_output.split('\n')
+
         
         # Model Hyperparameters
         input_dim = 128  # Example input size
@@ -222,7 +312,6 @@ def generate_transcript():
             segmented_transcript = f"An error occurred: {e}"
 
         # The variable 'segmented_transcript' now contains the segmented transcript
-
 
         return jsonify({"transcript": segmented_transcript})
     except Exception as e:
@@ -450,16 +539,61 @@ def generate_structured_bulk():
     model = get_gemini_model(engine)
     responses = []
     
+    # Prepare type-specific rules for bulk generation
+    otl_rules = '''
+    For OTL (Ordering) questions:
+       - List items MUST be in RANDOM order in the question
+       - Solution must show the correct sequential order
+       - Each step must be clear and distinct
+       - Include clear sequence indicators
+       - Steps should follow a logical progression''' if question_type == 'OTL' else ''
+    
+    mtl_rules = '''
+    For MTL (Matching) questions:
+       - Both lists must have equal number of items
+       - Each pair must have a clear, logical relationship
+       - Avoid obvious matches
+       - Include at least 3 pairs per question''' if question_type == 'MTL' else ''
+    
+    sml_rules = '''
+    For SML (Multiple Select) questions:
+       - MUST include at least 2 correct answers
+       - Provide 4-6 total options
+       - Each option must be distinct
+       - Mark ALL correct options in solution''' if question_type == 'SML' else ''
+    
+    sol_rules = '''
+    For SOL (Single Option) questions:
+       - Only one correct answer
+       - All distractors must be plausible
+       - Include clear explanation for why each option is correct/incorrect''' if question_type == 'SOL' else ''
+    
     # Create a single comprehensive prompt for all questions
     bulk_prompt = f"""
-    Generate {num_questions} questions of type {question_type} based on the following content:
+    Generate {num_questions} distinct questions of type {question_type} based on the following content:
     
     {prompt}
     
-    For each question:
-    1. Make them distinct from each other
-    2. Vary the difficulty levels
-    3. Return all questions in a single JSON array
+    Follow these STRICT rules for each question:
+    1. Make each question unique and distinct
+    2. Vary difficulty levels (1-5) across questions
+    3. For each question:
+       - Generate unique alphanumeric IDs for all items (e.g., 'q1_opt1', 'q1_opt2')
+       - Create clear, well-formatted question text
+       - Provide meaningful answer options (no placeholder text)
+       - Write detailed explanations for options
+       - If parameterized, use realistic parameter values
+    
+    Question Type Specific Rules:
+    {otl_rules}
+    {mtl_rules}
+    {sml_rules}
+    {sol_rules}
+    
+    4. Return all questions in a single JSON array
+    5. Do not use any placeholder values
+    6. Ensure proper JSON formatting
+    7. Each question must be complete and self-contained
     """
     
     # Generate all questions in one API call
@@ -475,224 +609,7 @@ def generate_structured_bulk():
         "responses": response.get("questions", [])
     })
 
-@app.route('/generate-structured', methods=['POST'])
-def generate_structured():
-    data = request.get_json()
-    engine = data.get('engine', 'models/gemma-3-27b-it')
-    prompt = data.get('prompt', '')
-    params = data.get('params', {})
-    structure_types = {
-        "SOL": {
-            "questionType": "SOL",
-            "questionText": "Rich Text/Markdown",
-            "hintText": "Rich Text/ Markdown",
-            "difficulty": 2,
-            "isParameterized": True,
-            "parameters": {
-                "parameterName": "a",
-                "allowedValued": ["2", "3", "9"]
-            },
-            "lot": {
-                "lotId": "ID of the LOT",
-                "lotItems": [
-                    {
-                        "id": "ID of the LOT item",
-                        "lotItemText": "Text Value",
-                        "explaination": "Explaination as why this option is correct/incorrect"
-                    },
-                    {
-                        "id": "ID of the LOT item",
-                        "lotItemText": "Text Value",
-                        "explaination": "Explaination as why this option is correct/incorrect"
-                    }
-                ]
-            },
-            "solution": {
-                "SOL": {
-                    "itemId": "ID of the solution item in the lot"
-                }
-            },
-            "metaDetails": {
-                "isStudentGenerated": True,
-                "isAIGenerated": False
-            },
-            "timeLimit": 300,
-            "points": 20
-        },
-        "SML": {
-            "questionType": "SML",
-            "questionText": "Rich Text/Markdown",
-            "hintText": "Rich Text/ Markdown",
-            "difficulty": 2,
-            "isParameterized": True,
-            "parameters": {
-                "parameterName": "a",
-                "allowedValued": ["2", "3", "9"]
-            },
-            "lot": {
-                "lotItems": [
-                    {
-                        "id": "ID of the LOT item",
-                        "lotItemText": "Text Value",
-                        "explaination": "Explaination as why this option is correct/incorrect"
-                    },
-                    {
-                        "id": "ID of the LOT item",
-                        "lotItemText": "Text Value",
-                        "explaination": "Explaination as why this option is correct/incorrect"
-                    }
-                ]
-            },
-            "solution": {
-                "SML": {
-                    "itemIds": [
-                        "ID of the solution item in the lot",
-                        "ID of the solution item in the lot"
-                    ]
-                }
-            },
-            "metaDetails": {
-                "isStudentGenerated": True,
-                "isAIGenerated": False
-            },
-            "timeLimit": 300,
-            "points": 20
-        },
-        "MTL": {
-            "questionType": "MTL",
-            "questionText": "Rich Text/Markdown",
-            "hintText": "Rich Text/ Markdown",
-            "difficulty": 2,
-            "isParameterized": True,
-            "parameters": {
-                "parameterName": "a",
-                "allowedValued": ["2", "3", "9"]
-            },
-            "lots": [
-                {
-                    "lotId": "ID of the LOT",
-                    "lotItems": [
-                        {
-                            "id": "ID of the LOT item",
-                            "lotItemText": "Text Value"
-                        },
-                        {
-                            "id": "ID of the LOT item",
-                            "lotItemText": "Text Value"
-                        }
-                    ]
-                },
-                {
-                    "lotId": "ID of the LOT",
-                    "lotItems": [
-                        {
-                            "id": "ID of the LOT item",
-                            "lotItemText": "Text Value"
-                        },
-                        {
-                            "id": "ID of the LOT item",
-                            "lotItemText": "Text Value"
-                        }
-                    ]
-                }
-            ],
-            "solution": {
-                "MTL": {
-                    "matches": [
-                        {
-                            "itemIds": [
-                                "ID of item in lot 1",
-                                "ID of item in lot 2"
-                            ]
-                        },
-                        {
-                            "itemIds": [
-                                "ID of item in lot 1",
-                                "ID of item in lot 2"
-                            ]
-                        }
-                    ]
-                }
-            },
-            "metaDetails": {
-                "isStudentGenerated": True,
-                "isAIGenerated": False
-            },
-            "timeLimit": 300,
-            "points": 20
-        },
-        "OTL": {
-            "questionType": "OTL",
-            "questionText": "Rich Text/Markdown",
-            "hintText": "Rich Text/ Markdown",
-            "difficulty": 2,
-            "isParameterized": True,
-            "parameters": {
-                "parameterName": "a",
-                "allowedValued": ["2", "3", "9"]
-            },
-            "lot": {
-                "lotId": "ID of the LOT",
-                "lotItems": [
-                    {
-                        "id": "ID of the LOT item",
-                        "lotItemText": "Text Value"
-                    },
-                    {
-                        "id": "ID of the LOT item",
-                        "lotItemText": "Text Value"
-                    }
-                ]
-            },
-            "solution": {
-                "OTL": {
-                    "orders": [
-                        {
-                            "itemId": "ID of the solution item in the lot",
-                            "order": 1
-                        },
-                        {
-                            "itemId": "ID of the solution item in the lot",
-                            "order": 2
-                        },
-                        {
-                            "itemId": "ID of the solution item in the lot",
-                            "order": 3
-                        }
-                    ]
-                }
-            },
-            "metaDetails": {
-                "isStudentGenerated": True,
-                "isAIGenerated": False
-            },
-            "timeLimit": 300,
-            "points": 20
-        }
-    }
-
-    '''question_type = data.get("questionType", "MTL")
-    structure = structure_types.get(question_type, structure_types["MTL"])
-    
-    model = get_gemini_model(engine)
-    responses = []
-    
-    for prompt in prompts:
-        response = generate_structured_text(model, prompt, data.get('params', {}), structure)
-        responses.append(response)
-    
-    return jsonify({'responses': responses})'''
-
-
-    question_type = data.get("questionType", "MTL")
-    structure = structure_types.get(question_type, structure_types["MTL"])
-
-    model = get_gemini_model(engine)
-    response = generate_structured_text(model, prompt, params, structure)
-
-    return jsonify(response)
-
-
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
